@@ -105,6 +105,30 @@ function diffCollected (options, branchCommits, callback) {
 }
 
 
+function applyCommits (list, bail) {
+  const cp = require('child_process')
+
+  let i = list.length
+  while (i--) {
+    const commit = list[i]
+    const out = cp.spawnSync('git', ['cherry-pick', commit.sha])
+
+    if (out.status === 0) {
+      continue
+    }
+
+    const cleanup = cp.spawnSync('git', ['cherry-pick', '--abort'])
+    if (cleanup.status !== 0) {
+      console.error('Error resetting git, bailing.')
+      return
+    }
+
+    console.log(`${bail ? 'Bailing' : 'Skipping'}: Could not apply ${commit.sha.slice(0, 7)}... ${commit.summary}`)
+    if (bail) return
+  }
+}
+
+
 function printCommits (list, simple) {
   list = list.map((commit) => commitToOutput(commit, simple, ghId))
 
@@ -139,6 +163,7 @@ if (require.main === module) {
     , endRef        = argv['end-ref']
     , excludeLabels = []
     , options
+    , bail          = argv.bail
 
   if (argv.version || argv.v) {
     console.log('v' + require('./package.json').version)
@@ -165,6 +190,11 @@ if (require.main === module) {
               || /\d{4}-\d{2}-\d{2},? Version \d{1,2}\.\d{1,3}\.\d{1,3} ("[A-Za-z ]+" )?\((Stable|LTS)\)/.test(commit.summary)
               || /\d{4}-\d{2}-\d{2},? io.js v\d{1,2}\.\d{1,3}\.\d{1,3} Release/.test(commit.summary))
       })
+    }
+
+    if (argv.apply) {
+      applyCommits(list, bail)
+      return
     }
 
     printCommits(list, simple)
